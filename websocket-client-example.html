@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>U-N-I-T-E WebSocket Client</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.disconnect {
+            background-color: #f44336;
+        }
+        button.disconnect:hover {
+            background-color: #da190b;
+        }
+        #events {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #f9f9f9;
+        }
+        .event {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #4CAF50;
+            background-color: white;
+        }
+        .event.error {
+            border-left-color: #f44336;
+        }
+        .event-type {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .event.error .event-type {
+            color: #f44336;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+        input {
+            padding: 8px;
+            width: 300px;
+            margin: 5px 0;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>U-N-I-T-E Workflow Orchestrator - WebSocket Client</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Connection</h2>
+            <div id="status" class="status disconnected">Disconnected</div>
+            <button id="connectBtn" onclick="connect()">Connect</button>
+            <button id="disconnectBtn" class="disconnect" onclick="disconnect()" disabled>Disconnect</button>
+
+            <h2>Subscriptions</h2>
+            <button onclick="subscribeToAll()">Subscribe to All Events</button>
+            <br>
+            <input type="text" id="executionId" placeholder="Execution ID">
+            <button onclick="subscribeToExecution()">Subscribe to Execution</button>
+
+            <h2>Test Actions</h2>
+            <button onclick="createAndExecuteWorkflow()">Create & Execute Test Workflow</button>
+        </div>
+
+        <div class="panel">
+            <h2>Events</h2>
+            <button onclick="clearEvents()">Clear Events</button>
+            <div id="events"></div>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let connected = false;
+
+        function connect() {
+            const socket = new SockJS('http://localhost:8080/ws');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function(frame) {
+                connected = true;
+                updateStatus(true);
+                addEvent('Connected to WebSocket', 'SYSTEM', false);
+                console.log('Connected: ' + frame);
+
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+            }, function(error) {
+                connected = false;
+                updateStatus(false);
+                addEvent('Connection error: ' + error, 'ERROR', true);
+                console.error('Connection error:', error);
+            });
+        }
+
+        function disconnect() {
+            if (stompClient !== null) {
+                stompClient.disconnect();
+            }
+            connected = false;
+            updateStatus(false);
+            addEvent('Disconnected from WebSocket', 'SYSTEM', false);
+
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+        }
+
+        function subscribeToAll() {
+            if (!connected) {
+                alert('Please connect first!');
+                return;
+            }
+
+            stompClient.subscribe('/topic/workflow-events', function(message) {
+                const event = JSON.parse(message.body);
+                addEvent(
+                    `${event.eventType}: ${event.message}`,
+                    event.eventType,
+                    event.eventType.includes('FAILED'),
+                    event
+                );
+            });
+
+            addEvent('Subscribed to all workflow events', 'SYSTEM', false);
+        }
+
+        function subscribeToExecution() {
+            if (!connected) {
+                alert('Please connect first!');
+                return;
+            }
+
+            const executionId = document.getElementById('executionId').value;
+            if (!executionId) {
+                alert('Please enter an execution ID');
+                return;
+            }
+
+            stompClient.subscribe('/topic/workflow-events/' + executionId, function(message) {
+                const event = JSON.parse(message.body);
+                addEvent(
+                    `[${executionId}] ${event.eventType}: ${event.message}`,
+                    event.eventType,
+                    event.eventType.includes('FAILED'),
+                    event
+                );
+            });
+
+            addEvent('Subscribed to execution: ' + executionId, 'SYSTEM', false);
+        }
+
+        function createAndExecuteWorkflow() {
+            // First create a workflow definition
+            fetch('http://localhost:8080/api/v1/workflow-definitions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: 'test-workflow-' + Date.now(),
+                    description: 'Test workflow from WebSocket client',
+                    version: '1.0.0',
+                    definitionJson: {
+                        steps: [
+                            { id: 'step1', type: 'test', name: 'Test Step' }
+                        ]
+                    },
+                    active: true,
+                    createdBy: 'websocket-client'
+                })
+            })
+            .then(response => response.json())
+            .then(definition => {
+                addEvent('Workflow definition created: ' + definition.id, 'SYSTEM', false);
+
+                // Now execute the workflow
+                return fetch('http://localhost:8080/api/v1/workflow-executions?async=true', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        workflowDefinitionId: definition.id,
+                        inputVariables: {
+                            test: 'value',
+                            timestamp: new Date().toISOString()
+                        }
+                    })
+                });
+            })
+            .then(response => response.json())
+            .then(execution => {
+                addEvent('Workflow execution started: ' + execution.id, 'SYSTEM', false);
+                document.getElementById('executionId').value = execution.id || execution.caseId;
+            })
+            .catch(error => {
+                addEvent('Error: ' + error.message, 'ERROR', true);
+                console.error('Error:', error);
+            });
+        }
+
+        function addEvent(message, type, isError, fullEvent = null) {
+            const eventsDiv = document.getElementById('events');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = 'event' + (isError ? ' error' : '');
+
+            const timestamp = new Date().toLocaleTimeString();
+
+            let html = `
+                <div class="event-type">${type}</div>
+                <div>${message}</div>
+                <div class="timestamp">${timestamp}</div>
+            `;
+
+            if (fullEvent) {
+                html += `<pre style="font-size: 0.8em; margin-top: 5px;">${JSON.stringify(fullEvent, null, 2)}</pre>`;
+            }
+
+            eventDiv.innerHTML = html;
+            eventsDiv.insertBefore(eventDiv, eventsDiv.firstChild);
+        }
+
+        function clearEvents() {
+            document.getElementById('events').innerHTML = '';
+        }
+
+        function updateStatus(isConnected) {
+            const statusDiv = document.getElementById('status');
+            if (isConnected) {
+                statusDiv.textContent = 'Connected';
+                statusDiv.className = 'status connected';
+            } else {
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'status disconnected';
+            }
+        }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            setTimeout(connect, 500);
+        };
+    </script>
+</body>
+</html>
