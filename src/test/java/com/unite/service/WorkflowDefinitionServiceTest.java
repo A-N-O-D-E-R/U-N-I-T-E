@@ -1,5 +1,6 @@
 package com.unite.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.unite.dto.WorkflowDefinitionRequest;
 import com.unite.dto.WorkflowDefinitionResponse;
@@ -34,9 +35,11 @@ class WorkflowDefinitionServiceTest {
 
     private WorkflowDefinitionRequest request;
     private WorkflowDefinitionEntity entity;
+    private JsonNode emptyJsonNode;
 
     @BeforeEach
     void setUp() {
+        emptyJsonNode = new ObjectMapper().createObjectNode();
         Map<String, Object> definitionJson = new HashMap<>();
         definitionJson.put("steps", Arrays.asList(
                 Map.of("id", "step1", "type", "test")
@@ -67,7 +70,7 @@ class WorkflowDefinitionServiceTest {
         when(repository.existsByNameAndVersion(anyString(), anyString())).thenReturn(false);
         when(objectMapper.writeValueAsString(any())).thenReturn("{\"steps\":[]}");
         when(repository.save(any(WorkflowDefinitionEntity.class))).thenReturn(entity);
-        when(objectMapper.readTree(anyString())).thenReturn(objectMapper.createObjectNode());
+        when(objectMapper.readTree(anyString())).thenReturn(emptyJsonNode);
 
         WorkflowDefinitionResponse response = service.createWorkflowDefinition(request);
 
@@ -91,7 +94,7 @@ class WorkflowDefinitionServiceTest {
     @Test
     void getWorkflowDefinition_Success() throws Exception {
         when(repository.findById(anyString())).thenReturn(Optional.of(entity));
-        when(objectMapper.readTree(anyString())).thenReturn(objectMapper.createObjectNode());
+        when(objectMapper.readTree(anyString())).thenReturn(emptyJsonNode);
 
         WorkflowDefinitionResponse response = service.getWorkflowDefinition("test-id");
 
@@ -112,7 +115,7 @@ class WorkflowDefinitionServiceTest {
     @Test
     void getAllWorkflowDefinitions() throws Exception {
         when(repository.findAll()).thenReturn(Arrays.asList(entity));
-        when(objectMapper.readTree(anyString())).thenReturn(objectMapper.createObjectNode());
+        when(objectMapper.readTree(anyString())).thenReturn(emptyJsonNode);
 
         List<WorkflowDefinitionResponse> responses = service.getAllWorkflowDefinitions();
 
@@ -146,7 +149,7 @@ class WorkflowDefinitionServiceTest {
         entity.setActive(false);
         when(repository.findById(anyString())).thenReturn(Optional.of(entity));
         when(repository.save(any(WorkflowDefinitionEntity.class))).thenReturn(entity);
-        when(objectMapper.readTree(anyString())).thenReturn(objectMapper.createObjectNode());
+        when(objectMapper.readTree(anyString())).thenReturn(emptyJsonNode);
 
         WorkflowDefinitionResponse response = service.activateWorkflowDefinition("test-id");
 
@@ -158,7 +161,7 @@ class WorkflowDefinitionServiceTest {
     void deactivateWorkflowDefinition() throws Exception {
         when(repository.findById(anyString())).thenReturn(Optional.of(entity));
         when(repository.save(any(WorkflowDefinitionEntity.class))).thenReturn(entity);
-        when(objectMapper.readTree(anyString())).thenReturn(objectMapper.createObjectNode());
+        when(objectMapper.readTree(anyString())).thenReturn(emptyJsonNode);
 
         WorkflowDefinitionResponse response = service.deactivateWorkflowDefinition("test-id");
 
