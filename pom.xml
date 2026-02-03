@@ -6,15 +6,15 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.2</version>
+        <groupId>com.anode</groupId>
+        <artifactId>springboot-starter-collection</artifactId>
+        <version>0.0.2-SNAPSHOT</version>
         <relativePath/>
     </parent>
 
     <groupId>com.unite</groupId>
     <artifactId>unite-workflow-orchestrator</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.0.2-SNAPSHOT</version>
     <name>U-N-I-T-E</name>
     <description>Workflow Orchestrator API based on workflow-springboot-starter</description>
 
@@ -47,12 +47,17 @@
         </dependency>
 
         <!-- Workflow Spring Boot Starter -->
-        <!-- Note: This dependency may need to be built locally or installed from the GitHub repository -->
-        <!-- <dependency>
+        <dependency>
             <groupId>com.anode</groupId>
             <artifactId>workflow-spring-boot-starter</artifactId>
-            <version>0.0.2-SNAPSHOT</version>
-        </dependency> -->
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.anode</groupId>
+            <artifactId>springboot-starter-collection-plugin</artifactId>
+        </dependency>
+
 
         <!-- Database -->
         <dependency>
@@ -125,5 +130,12 @@
                 </configuration>
             </plugin>
         </plugins>
+         <extensions>
+            <extension>
+                <groupId>com.anode.maven.wagon</groupId>
+                <artifactId>wagon-b2</artifactId>
+                <version>1.0.0</version>
+            </extension>
+        </extensions>
     </build>
 </project>

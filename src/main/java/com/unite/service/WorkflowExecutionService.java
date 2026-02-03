@@ -1,11 +1,17 @@
 package com.unite.service;
 
+import com.anode.workflow.entities.workflows.WorkflowContext;
+import com.anode.workflow.entities.workflows.WorkflowDefinition;
+import com.anode.workflow.entities.workflows.WorkflowVariables;
+import com.anode.workflow.spring.autoconfigure.runtime.FluentWorkflowBuilder;
+import com.anode.workflow.spring.autoconfigure.runtime.FluentWorkflowBuilderFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.unite.dto.WorkflowEventMessage;
 import com.unite.dto.WorkflowExecutionRequest;
 import com.unite.dto.WorkflowExecutionResponse;
 import com.unite.exception.ResourceNotFoundException;
 import com.unite.exception.WorkflowExecutionException;
+import com.unite.mapper.WorkflowExecutionMapper;
 import com.unite.model.WorkflowDefinitionEntity;
 import com.unite.model.WorkflowExecutionEntity;
 import com.unite.repository.WorkflowDefinitionRepository;
@@ -32,6 +38,7 @@ public class WorkflowExecutionService {
     private final WorkflowExecutionRepository executionRepository;
     private final WorkflowDefinitionRepository definitionRepository;
     private final WorkflowEventPublisher eventPublisher;
+    private final FluentWorkflowBuilderFactory workflowFactory;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -55,84 +62,20 @@ public class WorkflowExecutionService {
         WorkflowDefinitionEntity definition = definitionRepository.findById(request.getWorkflowDefinitionId())
                 .orElseThrow(() -> new ResourceNotFoundException("Workflow Definition", request.getWorkflowDefinitionId()));
 
+        
         if (!definition.getActive()) {
             throw new WorkflowExecutionException("Workflow definition is not active: " + definition.getName());
         }
 
         String caseId = request.getCaseId() != null ? request.getCaseId() : UUID.randomUUID().toString();
+        FluentWorkflowBuilder builder = workflowFactory.builder(caseId);
+        
+        WorkflowDefinition workflowDefinition = mapToWorkflowDefinition(definition.getDefinitionJson());
+        WorkflowVariables workflowVariables = mapToWorkflowVariables(request.getInputVariables());
+        WorkflowContext context = builder.start(workflowDefinition, workflowVariables);
 
-        WorkflowExecutionEntity execution = WorkflowExecutionEntity.builder()
-                .workflowDefinitionId(definition.getId())
-                .caseId(caseId)
-                .status(WorkflowExecutionEntity.ExecutionStatus.PENDING)
-                .inputVariables(convertToJsonString(request.getInputVariables()))
-                .build();
-
-        execution = executionRepository.save(execution);
-        log.info("Workflow execution created with ID: {}", execution.getId());
-
-        publishEvent(execution, WorkflowEventMessage.EventType.WORKFLOW_STARTED, "Workflow started");
-
-        try {
-            execution.setStatus(WorkflowExecutionEntity.ExecutionStatus.RUNNING);
-            execution = executionRepository.save(execution);
-
-            publishEvent(execution, WorkflowEventMessage.EventType.STATE_CHANGED, "Workflow running");
-
-            Map<String, Object> outputVariables = simulateWorkflowExecution(
-                    definition,
-                    request.getInputVariables(),
-                    execution.getId()
-            );
-
-            execution.setStatus(WorkflowExecutionEntity.ExecutionStatus.COMPLETED);
-            execution.setOutputVariables(convertToJsonString(outputVariables));
-            execution.setCompletedAt(LocalDateTime.now());
-            execution = executionRepository.save(execution);
-
-            publishEvent(execution, WorkflowEventMessage.EventType.WORKFLOW_COMPLETED, "Workflow completed successfully");
-
-            log.info("Workflow execution completed: {}", execution.getId());
-
-        } catch (Exception e) {
-            log.error("Workflow execution failed: {}", e.getMessage(), e);
-
-            execution.setStatus(WorkflowExecutionEntity.ExecutionStatus.FAILED);
-            execution.setErrorMessage(e.getMessage());
-            execution.setCompletedAt(LocalDateTime.now());
-            execution = executionRepository.save(execution);
-
-            publishEvent(execution, WorkflowEventMessage.EventType.WORKFLOW_FAILED, "Workflow failed: " + e.getMessage());
-
-            throw new WorkflowExecutionException("Workflow execution failed", e);
-        }
-
-        return mapToResponse(execution);
-    }
-
-    private Map<String, Object> simulateWorkflowExecution(
-            WorkflowDefinitionEntity definition,
-            Map<String, Object> inputVariables,
-            String executionId) throws InterruptedException {
-
-        log.info("Simulating workflow execution for: {}", definition.getName());
-
-        publishEvent(executionId, definition.getId(), WorkflowEventMessage.EventType.STEP_STARTED,
-                "Processing workflow steps", null);
-
-        Thread.sleep(2000);
-
-        publishEvent(executionId, definition.getId(), WorkflowEventMessage.EventType.STEP_COMPLETED,
-                "All steps completed", null);
-
-        Map<String, Object> outputs = new HashMap<>();
-        outputs.put("status", "success");
-        outputs.put("processedAt", LocalDateTime.now().toString());
-        if (inputVariables != null) {
-            outputs.putAll(inputVariables);
-        }
-
-        return outputs;
+        WorkflowExecutionEntity entity = executionRepository.save(WorkflowExecutionMapper.map(context));
+        return mapToResponse(entity) ;
     }
 
     @Transactional(readOnly = true)
@@ -250,5 +193,20 @@ public class WorkflowExecutionService {
             log.error("Error parsing JSON: {}", e.getMessage());
             return new HashMap<>();
         }
+    }
+
+    private WorkflowDefinition mapToWorkflowDefinition(String definitionJson) {
+        try {
+            return objectMapper.readValue(definitionJson, WorkflowDefinition.class);
+        } catch (Exception e) {
+            throw new WorkflowExecutionException("Failed to parse workflow definition JSON: " + e.getMessage(), e);
+        }
+    }
+
+    private WorkflowVariables mapToWorkflowVariables(Map<String, Object> inputVariables) {
+        if (inputVariables == null || inputVariables.isEmpty()) {
+            return new WorkflowVariables();
+        }
+        return objectMapper.convertValue(inputVariables, WorkflowVariables.class);
     }
 }

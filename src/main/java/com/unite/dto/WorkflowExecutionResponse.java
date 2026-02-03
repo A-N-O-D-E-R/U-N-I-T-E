@@ -1,5 +1,6 @@
 package com.unite.dto;
 
+import com.anode.workflow.entities.workflows.WorkflowContext;
 import com.unite.model.WorkflowExecutionEntity.ExecutionStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,4 +26,5 @@ public class WorkflowExecutionResponse {
     private LocalDateTime startedAt;
     private LocalDateTime updatedAt;
     private LocalDateTime completedAt;
+
 }
