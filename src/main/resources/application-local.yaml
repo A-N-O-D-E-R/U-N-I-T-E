@@ -1,0 +1,6 @@
+workflow:
+  engines:
+    - name: simple-engine
+      storage:
+        type: file
+        file-path: ./workflow-data
